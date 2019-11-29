@@ -1,6 +1,8 @@
 # UCR_CS164_SimpleTwitter
 My custom project in Computer Networks, Fall 2019
 
+Make topology command: sudo mn --custom finalTopol.py --topo mytopo
+
 *** Features to make ***
 Client Side:
 // Nothing is stored locally in the clients since all information is received from the server.
