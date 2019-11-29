@@ -70,6 +70,7 @@ int authenticate(char *usrname, char*pw) {
 
 void send_menu(int sockfd, char *message) {
 	char buffer[MSG_LEN];
+	bzero(buffer, MSG_LEN);
 	strcpy(buffer, message);
 	write(sockfd, buffer, strlen(buffer));
 }
@@ -87,22 +88,24 @@ void client_thread(void *client_node_addr) {
 	while(signin_flag) {
 		// authenticate user
 		// get username by input
-		send_menu(np->sockfd, "***** Sign in *****\n");
-		send_menu(np->sockfd, "Username: ");
+		send_menu(np->sockfd, "***** Sign in *****\nUsername: ");
 	
-		if(read(np->sockfd, username, 31) <= 0) {
+		bzero(username, 31);
+		if(rcv = read(np->sockfd, username, 31) <= 0) { //so many 0s
 			printf("Client(%s) didn't input name.\n", np->ip);
 			would_disconnect = true;
-		} else {
+		} 
+		else if(rcv >= 0) {
 			// get password by input
-			printf("%s sent %s\n", np->ip, username);
+			printf("got username: %s sent %s\n", np->ip, username);
 			send_menu(np->sockfd, "Password: ");
-			if(read(np->sockfd, password, 31) <= 0) {
+			bzero(password, 31);
+			if(rcv = read(np->sockfd, password, 31) < 0) {
 				printf("Client(%s) didn't input password.\n", np->ip);
 				would_disconnect = true;
 			}
-			else {
-				printf("%s sent %s\n", np->ip, password);
+			else if(rcv > 0) {
+				printf("got password: %s sent %s\n", np->ip, password);
 				// match username and password
 				if(authenticate(username, password) != -1) {
 					// authentication success
@@ -114,36 +117,45 @@ void client_thread(void *client_node_addr) {
 					strcpy(np->password, password);
 
 					// send welcome message
+					send_menu(np->sockfd, "Authenticated");
 					send_menu(np->sockfd, "*******************\n");
+					bzero(send_buffer, MSG_LEN);
 					sprintf(send_buffer, "Welcome, %s.\n", username);
 					write(np->sockfd, send_buffer, strlen(send_buffer));
 				}
 				else {
 					// authentication failed
+					send_menu(np->sockfd, "Failed");
 					send_menu(np->sockfd, "*******************\nAuthentication failed! Retry? (y/n)\n");
-					if(read(np->sockfd, recv_buffer, MSG_LEN) <= 0) {
+					bzero(recv_buffer, MSG_LEN);
+					if(rcv = read(np->sockfd, recv_buffer, MSG_LEN) < 0) {
 						printf("Client(%s) didn't reply.\n", np->ip);
 						would_disconnect = true;
 						signin_flag = false;
 					}
-					printf("%s sent %s\n", np->ip, recv_buffer);
+					printf("got reply y/n %s sent %s\n", np->ip, recv_buffer);
 
 					while((strcmp(recv_buffer, "n") != 0) && (strcmp(recv_buffer, "y") != 0)) {
 						// user didn't reply with (y/n)
 						send_menu(np->sockfd, "Please reply with 'y' or 'n'.\n");
+						bzero(recv_buffer, MSG_LEN);
 						if(read(np->sockfd, recv_buffer, MSG_LEN) <= 0) {
 							printf("Client(%s) didn't reply.\n", np->ip);
 							would_disconnect = true;
 							signin_flag = false;
 							break;
 						}
-						printf("%s sent %s\n", np->ip, recv_buffer);
+						printf("got reply y/n %s sent %s\n", np->ip, recv_buffer);
 					}
 					if(strcmp(recv_buffer, "n") == 0) {
 						// user replied with 'n'
 						would_disconnect = true;
 						signin_flag = false;
 						send_menu(np->sockfd, "Goodbye\n");
+					}
+					else {
+						// user replied with 'y'
+						send_menu(np->sockfd, "retry");
 					}
 				}
 			}
@@ -152,6 +164,7 @@ void client_thread(void *client_node_addr) {
 
 	// Interacting
 	while(!would_disconnect) {
+		bzero(recv_buffer, MSG_LEN);
 		rcv = read(np->sockfd, recv_buffer, MSG_LEN);
 		printf("%s sent %s\n", np->ip, recv_buffer);
 
