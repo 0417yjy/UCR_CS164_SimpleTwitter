@@ -52,11 +52,10 @@ inline void print_msg() {
 
 	//printf("getting a message...\n");
 	bzero(recvBuff, MSG_LEN);
-	if(n = read(sockfd, recvBuff, MSG_LEN - 1) > 0) {
-		//recvBuff[n] = 0;
-		//if(fputs(recvBuff, stdout) == EOF) {
-     	// 	printf("\n Error : Fputs error");
-		//}
+	if(n = read(sockfd, recvBuff, MSG_LEN - 1) >= 0) {
+		while(strlen(recvBuff) == 0) {
+			n = read(sockfd, recvBuff, MSG_LEN - 1);
+		}
 		printf("%s", recvBuff);
   	}
 	else if(n < 0) {
@@ -65,7 +64,7 @@ inline void print_msg() {
 }
 
 int client_authenticate() {
-	int i;
+	int i, n;
 	char buffer[MSG_LEN];
 
 	// get 1 message
@@ -88,7 +87,12 @@ int client_authenticate() {
 
 	// get 1 message
 	bzero(buffer, MSG_LEN);
-	read(sockfd, buffer, sizeof(buffer) - 1);
+	if(n = read(sockfd, buffer, sizeof(buffer) - 1) >= 0) {
+		while(strlen(buffer) == 0) {
+			n = read(sockfd, buffer, MSG_LEN - 1);
+		}
+	}
+
 	if(strcmp(buffer, "Authenticated") == 0) { // "Authenticated" received
 		printf("authenticated\n");
 		return 1;
@@ -120,7 +124,6 @@ int main(void)
   int auth_flag;
   char recvBuff[MSG_LEN];
   struct sockaddr_in serv_addr;
-  //struct hostent *hen;
  
   // initialize buffer
   memset(recvBuff, '0' ,sizeof(recvBuff));
@@ -131,18 +134,11 @@ int main(void)
       printf("\n Error : Could not create socket \n");
       return 1;
     }
-  //hen = gethostbyname("server.jongyeon.cs164");
-  /*hen = gethostbyaddr("10.0.0.4", 4, AF_INET);
-  if(hen == NULL) {
-    fprintf(stdout, "Host not found");
-    exit(1);
-  }*/
  
   // socket setting
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(4111);
   serv_addr.sin_addr.s_addr = inet_addr("10.0.0.4");
-  //bcopy((char *)hen->h_addr,(char *)&serv_addr.sin_addr.s_addr, hen->h_length);
  
   // connect to server
   if(connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))< 0)
@@ -155,23 +151,6 @@ int main(void)
   do {
   	auth_flag = client_authenticate();
   } while(auth_flag == 2); // keep retrying
-
-  /*fgets(recvBuff,MSG_LEN - 1, stdin);
-  write(sockfd, recvBuff, sizeof(recvBuff));
- 
-  while((n = read(sockfd, recvBuff, sizeof(recvBuff)-1)) > 0) {
-      recvBuff[n] = 0;
-      if(fputs(recvBuff, stdout) == EOF) {
-      	printf("\n Error : Fputs error");
-      }
-      printf("\n");
-  }
- 
-  if( n < 0)
-    {
-      printf("\n Read Error \n");
-    }
-  (*/
 
   // authenticating succeed
   printf("authenticating ends: %d\n", auth_flag);
