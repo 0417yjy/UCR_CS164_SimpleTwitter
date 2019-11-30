@@ -14,6 +14,7 @@
 
 //shared variables
 int sockfd = 0;
+int disconnect = 0;
 
 void recv_msg_thread() {
 	char recv_buffer[MSG_LEN];
@@ -24,6 +25,9 @@ void recv_msg_thread() {
 		rcv = read(sockfd, recv_buffer, MSG_LEN);
 		if(rcv > 0) {
 			// message received
+			if(strcmp(recv_buffer, "Goodbye\n") == 0) {
+				disconnect = 1;
+			}
 			printf("%s", recv_buffer);
 		}
 		else if(rcv == 0) {
@@ -94,7 +98,7 @@ int client_authenticate() {
 	}
 
 	if(strcmp(buffer, "Authenticated") == 0) { // "Authenticated" received
-		printf("authenticated\n");
+		//printf("authenticated\n");
 		return 1;
 	}
 	else if(strcmp(buffer, "Failed") == 0) { // "Failed" received
@@ -153,9 +157,9 @@ int main(void)
   } while(auth_flag == 2); // keep retrying
 
   // authenticating succeed
-  printf("authenticating ends: %d\n", auth_flag);
+  //printf("authenticating ends: %d\n", auth_flag);
   if(auth_flag == 1) {
-	printf("making threads\n");
+	//printf("making threads\n");
   	pthread_t p_send;
   	if(pthread_create(&p_send, NULL, (void *)send_msg_thread, NULL) != 0) {
 		printf("Creating pthread error\n");
@@ -168,8 +172,15 @@ int main(void)
 		return -1;
  	}
 
- 	while(1) { }
+ 	while(1) {
+		if(disconnect == 1) {
+			printf("Disconnecting..\n");
+			break;
+		}
+	}
   }
+
+  close(sockfd);
 
   return 0;
 }
