@@ -159,7 +159,7 @@ int main(void)
   // authenticating succeed
   //printf("authenticating ends: %d\n", auth_flag);
   if(auth_flag == 1) {
-	//printf("making threads\n");
+	printf("making threads\n");
   	pthread_t p_send;
   	if(pthread_create(&p_send, NULL, (void *)send_msg_thread, NULL) != 0) {
 		printf("Creating pthread error\n");

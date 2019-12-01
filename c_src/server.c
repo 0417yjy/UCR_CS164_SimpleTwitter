@@ -58,7 +58,7 @@ void delete_node(client_link head, client_link deleted_node) {
 
 void send_message(int sockfd, char *message) {
 	char buffer[MSG_LEN];
-	printf("Sent \n%s to %d..\n", message, sockfd);
+	printf("Sent a message to %d..\n", sockfd);
 	bzero(buffer, MSG_LEN);
 	strcpy(buffer, message);
 	write(sockfd, buffer, strlen(buffer));
@@ -99,7 +99,7 @@ void read_subscriptions(int user_idx, client_link np) {
 
 void show_subscriptions(int user_idx, client_link np) {
 	int i;
-	char buffer[5];
+	char buffer[MSG_LEN];
 
 	send_message(np->sockfd, "Your subscription list:\n");
 	if(np->sublist_arr[0] == -1) {
@@ -110,38 +110,41 @@ void show_subscriptions(int user_idx, client_link np) {
 		if(np->sublist_arr[i] == -1) {
 			break;
 		}
-		bzero(buffer, 5);
+		bzero(buffer, MSG_LEN);
 		sprintf(buffer, "%s\n", user_arr[np->sublist_arr[i]]);
 		write(np->sockfd, buffer, strlen(buffer));
 	}
 }
 
 void add_subscription(int user_idx, client_link np) {
-	char buffer[31];
+	char input_buffer[MSG_LEN];
 	char recv_buffer[MSG_LEN];
 	char filename[43];
 	int i, j, rcv;
 	FILE *f;
 	
 	// get user input
+	printf("Add command from user '%s':%d\n", user_arr[user_idx], user_idx);
 	send_message(np->sockfd, "Insert name of whom you want to subscribe: ");
-	bzero(buffer, 31);
-	if(rcv = read(np->sockfd, buffer, 31) < 0) {
+	bzero(input_buffer, MSG_LEN);
+	if(rcv = read(np->sockfd, input_buffer, MSG_LEN) < 0) {
 		printf("Client(%s) didn't reply.\n", np->ip);
 		return;
 	}
-	while(strlen(recv_buffer) == 0) { // doesn't work
-		rcv = read(np->sockfd, buffer, 31);
+	while(strlen(input_buffer) == 0) {
+		rcv = read(np->sockfd, input_buffer, MSG_LEN);
 	}
-	buffer[strlen(buffer) - 1] = '\0';
+	input_buffer[strlen(input_buffer)] = '\0';
+	printf("Got '%s' from %d\n", input_buffer, np->sockfd);
 
 	// search inserted name
 	for(i=0;i<USERS;i++) {
 		if(user_idx != i) { // search except client himself
-			if(strcmp(buffer, user_arr[i]) == 0) { // detected
+			printf("Comparing %s and %s...\n", input_buffer, user_arr[i]);
+			if(strcmp(input_buffer, user_arr[i]) == 0) { // detected
 				// send confirmation message
 				bzero(recv_buffer, MSG_LEN);
-				sprintf(recv_buffer, "%s has been found: ID is %d. Is it corret?\n", buffer, i);
+				sprintf(recv_buffer, "%s has been found: ID is %d. Is it corret?\n", input_buffer, i);
 				write(np->sockfd, recv_buffer, strlen(recv_buffer));
 
 				// get client's reply
@@ -181,8 +184,11 @@ void add_subscription(int user_idx, client_link np) {
 
 								// append to the sublist file
 								sprintf(filename, "%d_subs.txt", user_idx);
-								f = fopen(filename, "a");
-								fprintf(f, "%d\n", i);
+								f = fopen(filename, "w");
+								for(j=0;j<USERS - 1;j++) {
+									printf("fprinting %d to the file..\n", np->sublist_arr[j]);
+									fprintf(f, "%d\n", np->sublist_arr[j]);
+								}
 								fclose(f);
 								send_message(np->sockfd, "Subscribed");
 								return;
@@ -194,27 +200,29 @@ void add_subscription(int user_idx, client_link np) {
 		}
 	}
 	// Couldn't find the name
-	send_message(np->sockfd, "Couldn't find that name!");
+	send_message(np->sockfd, "Couldn't find that name!\n");
 }
 
 void delete_subscription(int user_idx, client_link np) {
-	char buffer[31];
+	char buffer[MSG_LEN];
 	char recv_buffer[MSG_LEN];
 	char filename[43];
 	int i, j, rcv;
 	FILE *f;
 	
 	// get user input
+	printf("Delete command from user '%s':%d\n", user_arr[user_idx], user_idx);
 	send_message(np->sockfd, "Insert name of whom you want to delete subscription: ");
-	bzero(buffer, 31);
+	bzero(buffer, MSG_LEN);
 	if(rcv = read(np->sockfd, buffer, MSG_LEN) < 0) {
 		printf("Client(%s) didn't reply.\n", np->ip);
 		return;
 	}
-	while(strlen(recv_buffer) == 0) {
+	while(strlen(buffer) == 0) {
 		rcv = read(np->sockfd, buffer, MSG_LEN);
 	}
-	buffer[strlen(buffer) - 1] = '\0';
+	buffer[strlen(buffer)] = '\0';
+	printf("Got '%s' from %d\n", buffer, np->sockfd);
 
 	// search inserted name
 	for(i=0;i<USERS - 1;i++) {
@@ -222,6 +230,7 @@ void delete_subscription(int user_idx, client_link np) {
 			// couldn't find the name
 			break;
 		}
+		printf("Comparing %s and %s...\n", buffer, user_arr[i]);
 		if(strcmp(buffer, user_arr[np->sublist_arr[i]]) == 0) {
 			// send confirmation message
 			bzero(recv_buffer, MSG_LEN);
@@ -266,15 +275,12 @@ void delete_subscription(int user_idx, client_link np) {
 					sprintf(filename, "%d_subs.txt", user_idx);
 					f = fopen(filename, "w");
 					for(j=0;j<USERS - 1;j++) {
-						if(np->sublist_arr[j] == -1) {
-							break;
-						}
 						fprintf(f, "%d\n", np->sublist_arr[j]);
 					}
 
 					// close file and return
 					fclose(f);
-					send_message(np->sockfd, "Subscribed");
+					send_message(np->sockfd, "Subscription deleted\n");
 					return;
 				}
 			}
@@ -287,10 +293,12 @@ void delete_subscription(int user_idx, client_link np) {
 int authenticate(char *usrname, char*pw) {
 	int i;
 	for(i=0;i<USERS;i++) { // search user pool
+		printf("i = %d, User is '%s'\n", i, user_arr[i]);
 		if(strcmp(usrname, user_arr[i]) == 0) {
 			if(strcmp(pw, pw_arr[i]) == 0) {
 				// if username and password are found in saved user pool
 				// return user's index
+				printf("returning %d\n", i);
 				return i;
 			}
 		}
@@ -365,6 +373,7 @@ void client_thread(void *client_node_addr) {
 				printf("got password: %s sent %s\n", np->ip, password);
 				// match username and password
 				if(user_idx = authenticate(username, password) != -1) {
+					user_idx--;
 					// authentication success
 					signin_flag = false;
 					printf("User '%s'(%s) connected\n", username, np->ip);
@@ -499,6 +508,7 @@ void client_thread(void *client_node_addr) {
 					break;
 
 					case 2:
+					printf("user_idx: %d\n", user_idx);
 					add_subscription(user_idx, np);
 					break;
 
