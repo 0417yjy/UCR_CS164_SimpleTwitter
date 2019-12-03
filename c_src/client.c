@@ -154,6 +154,7 @@ int main(void)
   // authenticating
   do {
   	auth_flag = client_authenticate();
+	printf("auth_flag = %d\n", auth_flag);
   } while(auth_flag == 2); // keep retrying
 
   // authenticating succeed
