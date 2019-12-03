@@ -16,15 +16,15 @@ Client Side:
 4)	Menu option: See Offline Messages (15 points)
 a)	If the user selects this option, the client should ask if the user wants to see all messages or if they want to select messages from a particular subscription. If the user picks the latter, then you should provide a list of current subscriptions that the user can choose from. Once the user has made all their choices, the appropriate messages should be displayed. Note: This option is for viewing messages generated while the user was offline only. Once the user logs out, the current list of offline messages should be removed and replaced by any new messages generated while the user is offline.
 
-5)	Menu option: Edit Subscriptions (15 points)
+5)	Menu option: Edit Subscriptions (15 points) (Done)
 a)	If the user selects this option, they should be given the choice to add a subscription or drop a subscription. If the user wants to add a subscription, prompt the user for the name and display a message indicating whether the name is valid or not. If the user wants to delete a subscription, give them a list of their current subscriptions to choose from.
 
-6)	Menu option: Post a Message (5 points)
+6)	Menu option: Post a Message (5 points) (Working)
 a)	Allow the user to post a tweet-like message of 140 characters or less. Allow the user to enter in hashtags but do it by prompting the user separately for the hashtags they want to include, i.e, store the hashtags in a separate field so you do not have to parse a message for the hashtags. Verify the message to make sure it meets the length requirement. If it doesn’t, notify the user and allow them to re-enter a different message (or cancel).
 
 7)	Menu option: Logout (5 points) (Done)
 
-8)	Menu option: Hashtag Search (15 points) (Working)
+8)	Menu option: Hashtag Search (15 points)
 a)	A user can search for a hashtag and he will get last 10 tweets containing that hashtag.
 
 9)	While the user is logged on, make sure to display in real time any message sent by any of the user’s subscriptions. (20 points)
