@@ -329,7 +329,7 @@ int authenticate(char *usrname, char*pw) {
 	return -1;
 }
 
-enum menus {main_menu, write_menu, read_menu, subscribe_menu, hashtag_menu};
+enum menus {main_menu, write_menu, read_menu, subscribe_menu, hashtag_menu, hashsearch_menu};
 void send_menu(int sockfd, int current_menu) {
 	char buffer[MSG_LEN];
 
@@ -353,6 +353,10 @@ void send_menu(int sockfd, int current_menu) {
 
 		case hashtag_menu:
 		send_message(sockfd, "Add hashtag. Enter '!e' to end adding hashtags: ");
+		break;
+
+		case hashsearch_menu:
+		send_message(sockfd, "Write a hashtag you want to search: ");
 		break;
 	}
 }
@@ -477,7 +481,7 @@ void get_twits(client_link np) {
 
 	num_getting = atoi(buffer);
 	if(!num_getting) {
-		send_message(np->sockfd, "Getting tweits canceled!\n");
+		send_message(np->sockfd, "Getting twits canceled!\n");
 	}
 	else {
 		// initialize variables
@@ -508,6 +512,47 @@ void get_twits(client_link np) {
 				send_message(np->sockfd, "Searched all twits!\n");
 				break;
 			}
+		}
+	}
+}
+
+void search_hashtag(client_link np, char *hashtag) {
+	twit_link tp = twit_tail;
+	int twit_cnt = 0;
+	bool send_this_twit;
+	int i, j;
+
+	while(twit_cnt < 10) {
+		send_this_twit = false;
+		// check whether getter subscribed this twit's owner
+		for(j=0;j<USERS - 1;j++) {
+			if(np->sublist_arr[j] == tp->user_idx) {
+				// found on the subilst. check the hashtag.
+				for(i=0;i<10;i++) {
+					if(strcmp(hashtag, tp->hashtag_list[i]) == 0) {
+						send_this_twit = true;
+						send_a_twit(np, tp);
+						break;
+					}
+					else if(strcmp("!e", tp->hashtag_list[i]) == 0) {
+						break;
+					}
+				}
+			}
+			else if(np->sublist_arr[j] == -1) {
+				// couldn't find this twit's owner in getter's sublist
+				break;
+			}
+		}
+		if(send_this_twit) {
+			twit_cnt++;
+		}
+		if(tp->twit_idx > 0) {
+			tp = tp->prev;
+		}
+		else {
+			send_message(np->sockfd, "Searched all twits!\n");
+			break;
 		}
 	}
 }
@@ -687,6 +732,10 @@ void client_thread(void *client_node_addr) {
 					state = main_menu;
 					break;
 
+					case 3:
+					state = hashsearch_menu;
+					break;
+
 					case -1:
 					state = main_menu;
 					break;
@@ -738,6 +787,11 @@ void client_thread(void *client_node_addr) {
 				else {
 					state = hashtag_menu;
 				}
+				break;
+
+				case hashsearch_menu:
+				search_hashtag(np, recv_buffer);
+				state = main_menu;
 				break;
 			}
 
