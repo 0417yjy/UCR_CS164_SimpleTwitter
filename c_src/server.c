@@ -23,6 +23,8 @@ typedef struct client_node {
 	char username[31];
 	char password[31];
 	int sublist_arr[USERS - 1];
+	int last_read_twit_idx;
+	int twit_idx_from_current_session;
 	client_link next;
 } client_node;
 
@@ -50,7 +52,7 @@ void append_node(client_link head, client_link new_node) {
 	// move to end of the list
 	while(head->next) {
 		head = head->next;
-	}	
+	}
 	// append the new one into the list
 	head->next = new_node;
 }
@@ -91,8 +93,14 @@ void read_subscriptions(int user_idx, client_link np) {
 		f = fopen(filename, "w"); // if file doesn't exist, make a new one
 		make_new = true;
 	}
-	
+
+	np->twit_idx_from_current_session = twit_tail->twit_idx + 1; // set twit idx from current session
 	if(!make_new) {
+		if(fgets(tmp_buffer, 4, f) != NULL) { // read last read twit idx
+			tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
+			np->last_read_twit_idx = atoi(tmp_buffer); // store into last read twit idx
+		}
+
 		while(fgets(tmp_buffer, 4, f) != NULL) { // read subscribe index
 			tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
 			np->sublist_arr[subscribe_idx++] = atoi(tmp_buffer); // store into subscribe list array
@@ -102,6 +110,7 @@ void read_subscriptions(int user_idx, client_link np) {
 		}
 	}
 	else {
+		fprintf(f, "0\n"); // write 0 as the last read twit number
 		for(subscribe_idx = 0;subscribe_idx < USERS - 1;subscribe_idx++) {
 			fprintf(f, "-1\n");
 			np->sublist_arr[subscribe_idx] = -1; // store -1 into rest indices as a blank
@@ -135,7 +144,7 @@ void add_subscription(int user_idx, client_link np) {
 	char filename[43];
 	int i, j, rcv;
 	FILE *f;
-	
+
 	// get user input
 	printf("Add command from user '%s':%d\n", user_arr[user_idx], user_idx);
 	send_message(np->sockfd, "Insert name of whom you want to subscribe: ");
@@ -222,7 +231,7 @@ void delete_subscription(int user_idx, client_link np) {
 	char filename[43];
 	int i, j, rcv;
 	FILE *f;
-	
+
 	// get user input
 	printf("Delete command from user '%s':%d\n", user_arr[user_idx], user_idx);
 	send_message(np->sockfd, "Insert name of whom you want to delete subscription: ");
@@ -283,7 +292,7 @@ void delete_subscription(int user_idx, client_link np) {
 					}
 					// make last subscription blank
 					np->sublist_arr[USERS-2] = -1;
-	
+
 					// edit sublist file
 					sprintf(filename, "%d_subs.txt", user_idx);
 					f = fopen(filename, "w");
@@ -323,19 +332,19 @@ int authenticate(char *usrname, char*pw) {
 enum menus {main_menu, write_menu, read_menu, subscribe_menu, hashtag_menu};
 void send_menu(int sockfd, int current_menu) {
 	char buffer[MSG_LEN];
-	
-	bzero(buffer, MSG_LEN);	
+
+	bzero(buffer, MSG_LEN);
 	switch(current_menu) {
 		case main_menu:
-		send_message(sockfd, "***** Main Menu *****\n1: Write a tweet\n2: Read tweets\n3: Set subscriptions\n4: Logout\n*********************\n");
+		send_message(sockfd, "***** Main Menu *****\n1: Write a twit\n2: Read twits\n3: Set subscriptions\n4: Logout\n*********************\n");
 		break;
-		
+
 		case write_menu:
 		send_message(sockfd, "You can cancel by writing 'cancel'.\nWrite a message:\n");
 		break;
 
 		case read_menu:
-		send_message(sockfd, "***** Read Menu *****\n1: Get all tweets\n2: Get unread tweets\n-1: Exit to Main Menu\n*********************\n");
+		send_message(sockfd, "***** Read Menu *****\n1: Get twits\n2: See Offline Messages\n3: Hashtag Search\n-1: Exit to Main Menu\n*********************\n");
 		break;
 
 		case subscribe_menu:
@@ -348,9 +357,29 @@ void send_menu(int sockfd, int current_menu) {
 	}
 }
 
-void send_all_subscribers(int writer_idx) {
+void send_a_twit(client_link target, twit_link tp) {
+	char buffer[MSG_LEN];
+	int j;
+
+	bzero(buffer, MSG_LEN);
+	sprintf(buffer, "[%d]%s: %s", tp->twit_idx, user_arr[tp->user_idx], tp->twit_str);
+	j = 0;
+	while(tp->hashtag_list[j]) {
+		if(strcmp(tp->hashtag_list[j], "!e") == 0) {
+			break;
+		}
+		strcat(buffer, " #");
+		strcat(buffer, tp->hashtag_list[j]);
+		j++;
+	}
+	strcat(buffer, "\n");
+	write(target->sockfd, buffer, strlen(buffer));
+}
+
+void send_all_subscribers(twit_link tp) {
 	int i;
 	client_link p = client_head;
+	int writer_idx = tp->user_idx;
 	char buffer[MSG_LEN];
 
 	while(p) {
@@ -360,8 +389,9 @@ void send_all_subscribers(int writer_idx) {
 			}
 			if(p->sublist_arr[i] == writer_idx) {
 				bzero(buffer, MSG_LEN);
-				sprintf(buffer, "%s posted a twit just now!\n", user_arr[writer_idx]);
+				sprintf(buffer, "%s posted a twit just now:\n", user_arr[writer_idx]);
 				write(p->sockfd, buffer, strlen(buffer));
+				send_a_twit(p, tp);
 				break;
 			}
 		}
@@ -375,10 +405,10 @@ twit_link twit_str(int user_idx, char *twit) {
 	printf("Start posting: %d:%s\n", user_idx, twit);
 	new_twit = (twit_link)malloc(sizeof(twit_node)); // make a new node
 
-	printf("Assign a new one to tail's next...\n");
+	//printf("Assign a new one to tail's next...\n");
 	twit_tail->next = new_twit;
 
-	printf("Setting the newcomer...\n");
+	//printf("Setting the newcomer...\n");
 	// set the new one and append to the twit list
 	new_twit->prev = twit_tail;
 	new_twit->next = NULL;
@@ -421,7 +451,65 @@ void insert_hashtag(twit_link p, char *hashtag_buffer) {
 	pthread_mutex_unlock(&fwrite_mutex);
 	printf("Editing twitlist completed!\n");
 
-	//send_all_subscribers(p->user_idx);
+	send_all_subscribers(p);
+}
+
+void get_twits(client_link np) {
+	char buffer[MSG_LEN];
+	int rcv;
+	int num_getting;
+	int i, j;
+	twit_link tp;
+	bool send_this_twit;
+
+	// get user input
+	send_message(np->sockfd, "How many twits you want to get?: ");
+	bzero(buffer, MSG_LEN);
+	if(rcv = read(np->sockfd, buffer, MSG_LEN) < 0) {
+		printf("Client(%s) didn't reply.\n", np->ip);
+		return;
+	}
+	while(strlen(buffer) == 0) {
+		rcv = read(np->sockfd, buffer, MSG_LEN);
+	}
+	buffer[strlen(buffer)] = '\0';
+	printf("Got %s from %d\n", buffer, np->sockfd);
+
+	num_getting = atoi(buffer);
+	if(!num_getting) {
+		send_message(np->sockfd, "Getting tweits canceled!\n");
+	}
+	else {
+		// initialize variables
+		tp = twit_tail; // start from the tail of the twit list
+		i = 0;
+
+		while(i < num_getting) {
+			send_this_twit = false;
+			// check whether getter subscribed this twit's owner
+			for(j=0;j<USERS - 1;j++) {
+				if(np->sublist_arr[j] == tp->user_idx) {
+					// found on the subilst. send it
+					send_this_twit = true;
+					send_a_twit(np, tp);
+				}
+				else if(np->sublist_arr[j] == -1) {
+					// couldn't find this twit's owner in getter's sublist
+					break;
+				}
+			}
+			if(send_this_twit) {
+				i++;
+			}
+			if(tp->twit_idx > 0) {
+				tp = tp->prev;
+			}
+			else {
+				send_message(np->sockfd, "Searched all twits!\n");
+				break;
+			}
+		}
+	}
 }
 
 void client_thread(void *client_node_addr) {
@@ -444,12 +532,12 @@ void client_thread(void *client_node_addr) {
 		// authenticate user
 		// get username by input
 		send_message(np->sockfd, "***** Sign in *****\nUsername: ");
-	
+
 		bzero(recv_buffer, 31);
 		if(rcv = read(np->sockfd, username, 31) < 0) {
 			printf("Client(%s) didn't input name.\n", np->ip);
 			would_disconnect = true;
-		} 
+		}
 		else if(rcv >= 0) {
 			while(strlen(username) == 0) {
 				rcv = read(np->sockfd, username, 31);
@@ -524,7 +612,7 @@ void client_thread(void *client_node_addr) {
 							// user replied with 'y'
 							send_message(np->sockfd, "retry");
 						}
-					}	
+					}
 				}
 			}
 		}
@@ -590,12 +678,12 @@ void client_thread(void *client_node_addr) {
 				case read_menu:
 				switch(menu_selected) {
 					case 1:
-					//get_all_tweets(user_idx);
+					get_twits(np);
 					state = main_menu;
 					break;
 
 					case 2:
-					//get_unread_tweets(user_idx);
+					//get_unread_twits(user_idx);
 					state = main_menu;
 					break;
 
@@ -654,7 +742,7 @@ void client_thread(void *client_node_addr) {
 			}
 
 			switch(state) { // Actions
-			
+
 			}
 		}
 		else {
@@ -669,7 +757,7 @@ void client_thread(void *client_node_addr) {
 	close(np->sockfd);
 	delete_node(client_head, np);
 }
- 
+
 int main(void)
 {
 	int listenfd = 0,connfd = 0;
@@ -684,9 +772,9 @@ int main(void)
 	int i, j;
 
   	// initialize head node of client list
-  	client_head = (client_link)malloc(sizeof(client_node)); 
+  	client_head = (client_link)malloc(sizeof(client_node));
   	client_head->next = NULL;
-	
+
   	//creating socket
   	listenfd = socket(AF_INET, SOCK_STREAM, 0);
   	if(listenfd == -1) {
@@ -694,16 +782,16 @@ int main(void)
 		return -1;
   	}
   	printf("Socket retrieving success\n");
-	
+
   	// setting socket
   	serv_addrlen = sizeof(serv_addr);
 	client_addrlen = sizeof(client_addr);
 	memset(&serv_addr, '0', sizeof(serv_addr));
 	memset(&client_addr, '0', sizeof(client_addr));
-	serv_addr.sin_family = AF_INET;    
-	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY); 
-	serv_addr.sin_port = htons(4111);    
-	
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	serv_addr.sin_port = htons(4111);
+
 	//bind socket and listen
 	bind(listenfd, (struct sockaddr*)&serv_addr,sizeof(serv_addr));
 	if(listen(listenfd, 10) == -1) {
@@ -722,7 +810,7 @@ int main(void)
 		printf("Couldn't read twitlist.txt!\n");
 		return 1;
 	}
-	
+
 	i = 0;
 	while(fgets(tmp_buffer, 313, f) != NULL) { // read twit list
 		tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
@@ -736,15 +824,15 @@ int main(void)
 		fgets(tmp_buffer, 313, f); // get twit string
 		tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
 		strcpy(new_twit->twit_str, tmp_buffer);
-		printf("Read twit '%s'\n", tmp_buffer);
+		//printf("Read twit '%s'\n", tmp_buffer);
 
 		fgets(tmp_buffer, 313, f); // get hashtags
 		tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
 		token = strtok(tmp_buffer, ";"); // tokenize hashtags by ';'
-		
+
 		j = 0;
 		while(token != NULL) {
-			printf("Read hashtag '%s'\n", token);
+			//printf("Read hashtag '%s'\n", token);
 			new_twit->hashtag_list[j] = (char *)malloc(sizeof(char)*30);
 			strcpy(new_twit->hashtag_list[j++], token); // copy into hashtag list
 			token = strtok(NULL, ";");
@@ -754,8 +842,9 @@ int main(void)
 		new_twit->prev = prev_twit;
 		prev_twit = new_twit;
 		twit_tail = new_twit;
+		i++;
 	}
-
+	printf("Read %d twits\n", i);
 	fclose(f);
 
 	// init mutex lock
@@ -765,16 +854,16 @@ int main(void)
         printf("\n mutex init failed\n");
         return 1;
     }
-		
-	
+
+
 	printf("Ready to accept clients...\n");
-	while(1) {      
+	while(1) {
 		connfd = accept(listenfd, (struct sockaddr*)&client_addr ,(socklen_t*)&client_addrlen); // accept awaiting request
 
 		// print client info
 		getpeername(connfd, (struct sockaddr*) &client_addr, (socklen_t*) &client_addrlen);
 		printf("Client %s:%d connected.\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-		
+
 		// make a new node and initialize it
 		new_client = (client_link)malloc(sizeof(client_node));
 		new_client->sockfd = connfd;
@@ -794,6 +883,6 @@ int main(void)
 	}
 
 	pthread_mutex_destroy(&fwrite_mutex);
-	
+
 	return 0;
 }
