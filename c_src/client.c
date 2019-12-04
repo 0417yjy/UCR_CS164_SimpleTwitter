@@ -24,11 +24,15 @@ void recv_msg_thread() {
 		bzero(recv_buffer, MSG_LEN);
 		rcv = read(sockfd, recv_buffer, MSG_LEN);
 		if(rcv > 0) {
+			while(strlen(recv_buffer) == 0) {
+				rcv = read(sockfd, recv_buffer, MSG_LEN);
+			}
 			// message received
 			if(strcmp(recv_buffer, "Goodbye\n") == 0) {
 				disconnect = 1;
 			}
 			printf("%s", recv_buffer);
+			fflush(stdout);
 		}
 		else if(rcv == 0) {
 			break;
@@ -43,10 +47,18 @@ void send_msg_thread() {
 	char send_buffer[MSG_LEN];
 	while(1) {
 		bzero(send_buffer, MSG_LEN);
-		if(fgets(send_buffer, MSG_LEN, stdin) != NULL) {
+		//printf("Ready to get input\n");
+		while(fgets(send_buffer, MSG_LEN, stdin) != NULL) {
 			send_buffer[strlen(send_buffer) - 1] = '\0';
-			write(sockfd, send_buffer, MSG_LEN);
+			if(strlen(send_buffer) == 0) {
+				fflush(stdout);
+			}
+			else {
+				break;
+			}
 		}
+		write(sockfd, send_buffer, MSG_LEN);
+		//printf("Sent message to server\n");
 	}
 }
 

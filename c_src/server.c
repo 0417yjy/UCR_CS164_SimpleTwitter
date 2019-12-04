@@ -29,6 +29,7 @@ typedef struct client_node {
 // Twit string linked list node structure
 typedef struct twit_node *twit_link;
 typedef struct twit_node {
+	int twit_idx;
 	int user_idx;
 	char twit_str[141]; // twit length is 140 or less
 	char *hashtag_list[11]; // hashtags can be 10 at most
@@ -347,6 +348,27 @@ void send_menu(int sockfd, int current_menu) {
 	}
 }
 
+void send_all_subscribers(int writer_idx) {
+	int i;
+	client_link p = client_head;
+	char buffer[MSG_LEN];
+
+	while(p) {
+		for(i=0;i<USERS - 1;i++) {
+			if(p->sublist_arr[i] == -1) { // end of subscription list
+				break;
+			}
+			if(p->sublist_arr[i] == writer_idx) {
+				bzero(buffer, MSG_LEN);
+				sprintf(buffer, "%s posted a twit just now!\n", user_arr[writer_idx]);
+				write(p->sockfd, buffer, strlen(buffer));
+				break;
+			}
+		}
+		p = p->next; // find next client
+	}
+}
+
 twit_link twit_str(int user_idx, char *twit) {
 	twit_link new_twit;
 
@@ -361,6 +383,7 @@ twit_link twit_str(int user_idx, char *twit) {
 	new_twit->prev = twit_tail;
 	new_twit->next = NULL;
 	new_twit->user_idx = user_idx;
+	new_twit->twit_idx = new_twit->prev->twit_idx + 1;
 	strcpy(new_twit->twit_str, twit);
 
 	// make the new one tail of the list
@@ -397,6 +420,8 @@ void insert_hashtag(twit_link p, char *hashtag_buffer) {
 		fclose(f);
 	pthread_mutex_unlock(&fwrite_mutex);
 	printf("Editing twitlist completed!\n");
+
+	//send_all_subscribers(p->user_idx);
 }
 
 void client_thread(void *client_node_addr) {
@@ -656,7 +681,7 @@ int main(void)
 	char *token;
 	int tmp_user_idx;
   	FILE *f;
-	int i;
+	int i, j;
 
   	// initialize head node of client list
   	client_head = (client_link)malloc(sizeof(client_node)); 
@@ -698,9 +723,12 @@ int main(void)
 		return 1;
 	}
 	
+	i = 0;
 	while(fgets(tmp_buffer, 313, f) != NULL) { // read twit list
 		tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
 		new_twit = (twit_link)malloc(sizeof(twit_node)); // make a new twit node
+
+		new_twit->twit_idx = i;
 
 		tmp_user_idx = atoi(tmp_buffer); // get index of user
 		new_twit->user_idx = tmp_user_idx;
@@ -710,14 +738,15 @@ int main(void)
 		strcpy(new_twit->twit_str, tmp_buffer);
 		printf("Read twit '%s'\n", tmp_buffer);
 
-		i = 0;
 		fgets(tmp_buffer, 313, f); // get hashtags
 		tmp_buffer[strlen(tmp_buffer) - 1] = '\0'; // change '\n' in the last column to '\0'
 		token = strtok(tmp_buffer, ";"); // tokenize hashtags by ';'
+		
+		j = 0;
 		while(token != NULL) {
 			printf("Read hashtag '%s'\n", token);
-			new_twit->hashtag_list[i] = (char *)malloc(sizeof(char)*30);
-			strcpy(new_twit->hashtag_list[i++], token); // copy into hashtag list
+			new_twit->hashtag_list[j] = (char *)malloc(sizeof(char)*30);
+			strcpy(new_twit->hashtag_list[j++], token); // copy into hashtag list
 			token = strtok(NULL, ";");
 		}
 
