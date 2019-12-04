@@ -119,6 +119,27 @@ void read_subscriptions(int user_idx, client_link np) {
 	fclose(f);
 }
 
+void edit_client_file(int user_idx, client_link np) {
+	FILE *f;
+	char filename[30];
+	int i;
+
+	sprintf(filename, "%d_subs.txt", user_idx);
+	f = fopen(filename, "w");
+	if(!f) {
+		printf("fopen failed!\n");
+		return;
+	}
+
+	np->last_read_twit_idx = twit_tail->twit_idx;
+	printf("printing %d as last index...\n", np->last_read_twit_idx);
+	fprintf(f, "%d\n", np->last_read_twit_idx);
+	for(i=0;i<USERS - 1;i++) {
+		fprintf(f, "%d\n", np->sublist_arr[i]);
+	}
+	fclose(f);
+}
+
 void show_subscriptions(int user_idx, client_link np) {
 	int i;
 	char buffer[MSG_LEN];
@@ -207,6 +228,7 @@ void add_subscription(int user_idx, client_link np) {
 								// append to the sublist file
 								sprintf(filename, "%d_subs.txt", user_idx);
 								f = fopen(filename, "w");
+								fprintf(f, "%d\n", np->last_read_twit_idx);
 								for(j=0;j<USERS - 1;j++) {
 									printf("fprinting %d to the file..\n", np->sublist_arr[j]);
 									fprintf(f, "%d\n", np->sublist_arr[j]);
@@ -296,6 +318,7 @@ void delete_subscription(int user_idx, client_link np) {
 					// edit sublist file
 					sprintf(filename, "%d_subs.txt", user_idx);
 					f = fopen(filename, "w");
+					fprintf(f, "%d\n", np->last_read_twit_idx);
 					for(j=0;j<USERS - 1;j++) {
 						fprintf(f, "%d\n", np->sublist_arr[j]);
 					}
@@ -329,7 +352,7 @@ int authenticate(char *usrname, char*pw) {
 	return -1;
 }
 
-enum menus {main_menu, write_menu, read_menu, subscribe_menu, hashtag_menu, hashsearch_menu};
+enum menus {main_menu, write_menu, read_menu, subscribe_menu, hashtag_menu, hashsearch_menu, getoffline_super_menu, getoffline_part_menu};
 void send_menu(int sockfd, int current_menu) {
 	char buffer[MSG_LEN];
 
@@ -357,6 +380,14 @@ void send_menu(int sockfd, int current_menu) {
 
 		case hashsearch_menu:
 		send_message(sockfd, "Write a hashtag you want to search: ");
+		break;
+
+		case getoffline_super_menu:
+		send_message(sockfd, "***** Get Offline Messages *****\n1: Get all messages\n2: Get messages from a particular subscription\n********************************\n");
+		break;
+
+		case getoffline_part_menu:
+		send_message(sockfd, "Write a name you want to get twits of: ");
 		break;
 	}
 }
@@ -557,6 +588,97 @@ void search_hashtag(client_link np, char *hashtag) {
 	}
 }
 
+void get_unread_all(client_link np) {
+	twit_link tp = twit_tail;
+	int current_twit_idx = np->twit_idx_from_current_session - 1;
+	int j;
+
+	while(np->last_read_twit_idx < current_twit_idx) {
+		// check whether getter subscribed this twit's owner
+		for(j=0;j<USERS - 1;j++) {
+			if(np->sublist_arr[j] == tp->user_idx) {
+				// found on the subilst. send it
+				send_a_twit(np, tp);
+			}
+			else if(np->sublist_arr[j] == -1) {
+				// couldn't find this twit's owner in getter's sublist
+				break;
+			}
+		}
+		if(tp->twit_idx > 0) {
+			tp = tp->prev;
+		}
+		else {
+			send_message(np->sockfd, "Searched all twits!\n");
+			break;
+		}
+		current_twit_idx--;
+	}
+
+	// after get all unread messages, set the last read twit idx to current twit tail's twit_idx
+	np->last_read_twit_idx = twit_tail->twit_idx;
+}
+
+void get_unread_from(client_link np, char *subscription) {
+	twit_link tp = twit_tail;
+	int current_twit_idx = np->twit_idx_from_current_session - 1;
+	bool first_twit = false;
+	int first_twit_idx;
+
+	while(np->last_read_twit_idx < current_twit_idx) {
+		// check whether getter subscribed this twit's owner
+		if(strcmp(subscription, user_arr[tp->user_idx]) == 0) {
+			// found on the subilst. send it
+			if(!first_twit) {
+				first_twit = true;
+				first_twit_idx = current_twit_idx;
+			}
+			send_a_twit(np, tp);
+		}
+		if(tp->twit_idx > 0) {
+			tp = tp->prev;
+		}
+		else {
+			send_message(np->sockfd, "Searched all twits!\n");
+			break;
+		}
+		current_twit_idx--;
+	}
+
+	// after get all unread messages, set the last read twit idx to the latest twit read
+	np->last_read_twit_idx = first_twit_idx;
+}
+
+int get_unread_num(client_link np) {
+	twit_link tp = twit_tail;
+	int current_twit_idx = tp->twit_idx;
+	int j;
+	int cnt = 0;
+
+	while(np->last_read_twit_idx < current_twit_idx) {
+		// check whether getter subscribed this twit's owner
+		for(j=0;j<USERS - 1;j++) {
+			if(np->sublist_arr[j] == tp->user_idx) {
+				// found on the subilst. count it
+				cnt++;
+			}
+			else if(np->sublist_arr[j] == -1) {
+				// couldn't find this twit's owner in getter's sublist
+				break;
+			}
+		}
+		if(tp->twit_idx > 0) {
+			tp = tp->prev;
+		}
+		else {
+			break;
+		}
+		current_twit_idx--;
+	}
+
+	return cnt;
+}
+
 void client_thread(void *client_node_addr) {
 	bool would_disconnect = false;
 	bool signin_flag = true;
@@ -617,7 +739,7 @@ void client_thread(void *client_node_addr) {
 					send_message(np->sockfd, "Authenticated");
 					send_message(np->sockfd, "*******************\n");
 					bzero(send_buffer, MSG_LEN);
-					sprintf(send_buffer, "Welcome, %s.\n", username);
+					sprintf(send_buffer, "Welcome, %s.\nYou have %d unread messages.\n", username, get_unread_num(np));
 					write(np->sockfd, send_buffer, strlen(send_buffer));
 				}
 				else {
@@ -694,6 +816,7 @@ void client_thread(void *client_node_addr) {
 
 					case 4:
 					would_disconnect = true;
+					edit_client_file(user_idx, np);
 					send_message(np->sockfd, "Goodbye\n");
 					break;
 
@@ -728,8 +851,7 @@ void client_thread(void *client_node_addr) {
 					break;
 
 					case 2:
-					//get_unread_twits(user_idx);
-					state = main_menu;
+					state = getoffline_super_menu;
 					break;
 
 					case 3:
@@ -791,6 +913,24 @@ void client_thread(void *client_node_addr) {
 
 				case hashsearch_menu:
 				search_hashtag(np, recv_buffer);
+				state = main_menu;
+				break;
+
+				case getoffline_super_menu:
+				switch(menu_selected) {
+					case 1:
+					get_unread_all(np);
+					state = main_menu;
+					break;
+
+					case 2:
+					state = getoffline_part_menu;
+					break;
+				}
+				break;
+
+				case getoffline_part_menu:
+				get_unread_from(np, recv_buffer);
 				state = main_menu;
 				break;
 			}
